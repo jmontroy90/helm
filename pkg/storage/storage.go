@@ -18,8 +18,6 @@ package storage // import "helm.sh/helm/v3/pkg/storage"
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/pkg/errors"
 
 	rspb "helm.sh/helm/v3/pkg/release"
@@ -115,10 +113,6 @@ func (s *Storage) Deployed(name string) (*rspb.Release, error) {
 		return nil, err
 	}
 
-	if len(ls) == 0 {
-		return nil, errors.Errorf("%q has no deployed releases", name)
-	}
-
 	// If executed concurrently, Helm's database gets corrupted
 	// and multiple releases are DEPLOYED. Take the latest.
 	relutil.Reverse(ls, relutil.SortByRevision)
@@ -136,13 +130,13 @@ func (s *Storage) DeployedAll(name string) ([]*rspb.Release, error) {
 		"owner":  "helm",
 		"status": "deployed",
 	})
-	if err == nil {
-		return ls, nil
+	if err != nil {
+		return nil, err
 	}
-	if strings.Contains(err.Error(), "not found") {
-		return nil, errors.Errorf("%q has no deployed releases", name)
+	if len(ls) == 0 {
+		return nil, driver.ErrReleaseNotFound
 	}
-	return nil, err
+	return ls, nil
 }
 
 // History returns the revision history for the release with the provided name, or
@@ -150,7 +144,17 @@ func (s *Storage) DeployedAll(name string) ([]*rspb.Release, error) {
 func (s *Storage) History(name string) ([]*rspb.Release, error) {
 	s.Log("getting release history for %q", name)
 
-	return s.Driver.Query(map[string]string{"name": name, "owner": "helm"})
+	ls, err := s.Driver.Query(map[string]string{
+		"name": name,
+		"owner": "helm",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(ls) == 0 {
+		return nil, driver.ErrReleaseNotFound
+	}
+	return ls, nil
 }
 
 // removeLeastRecent removes items from history until the lengh number of releases
